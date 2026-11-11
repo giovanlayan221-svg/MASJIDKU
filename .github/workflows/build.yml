@@ -42,6 +42,28 @@ jobs:
         working-directory: ${{ env.PROJECT_DIR }}
         run: python3 scripts/fetch_quran.py
 
+      - name: Cache audio murottal
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PROJECT_DIR }}/app/src/main/assets/murottal
+          key: murottal-v1-${{ vars.QARI_KEY || '05' }}-${{ vars.AUDIO_KBPS || '40' }}
+
+      - name: Pasang ffmpeg
+        run: sudo apt-get update -y && sudo apt-get install -y ffmpeg
+
+      - name: Unduh dan kompres audio murottal
+        id: audio
+        continue-on-error: true
+        working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          QARI_KEY: ${{ vars.QARI_KEY }}
+          AUDIO_KBPS: ${{ vars.AUDIO_KBPS }}
+        run: python3 scripts/fetch_audio.py
+
+      - name: Peringatan jika audio gagal
+        if: steps.audio.outcome == 'failure'
+        run: echo "::warning::Audio murottal gagal dibundel. APK tetap dibuat tanpa audio (lihat log langkah audio)."
+
       - name: Pasang file adzan (opsional, dari variabel ADZAN_URL)
         working-directory: ${{ env.PROJECT_DIR }}
         env:
