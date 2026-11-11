@@ -1,0 +1,43 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Unduh data Al-Qur'an (equran.id) ke assets
+        run: python3 scripts/fetch_quran.py
+      - name: Pasang file adzan (opsional, dari variabel ADZAN_URL)
+        env:
+          ADZAN_URL: ${{ vars.ADZAN_URL }}
+        run: |
+          if [ -n "$ADZAN_URL" ]; then
+            curl -fL "$ADZAN_URL" -o app/src/main/assets/adzan.mp3
+            ls -lh app/src/main/assets/adzan.mp3
+          elif [ -f app/src/main/assets/adzan.mp3 ]; then
+            echo "Memakai adzan.mp3 yang ada di repo"
+          else
+            echo "adzan.mp3 tidak ada; aplikasi memakai nada notifikasi cadangan"
+          fi
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.9
+      - name: Build debug APK
+        run: gradle :app:assembleDebug --no-daemon
+      - name: Ukuran APK
+        run: ls -lh app/build/outputs/apk/debug/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: masjidku-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          
