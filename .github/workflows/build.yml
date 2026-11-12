@@ -60,9 +60,11 @@ jobs:
           AUDIO_KBPS: ${{ vars.AUDIO_KBPS }}
         run: python3 scripts/fetch_audio.py
 
-      - name: Peringatan jika audio gagal
-        if: steps.audio.outcome == 'failure'
-        run: echo "::warning::Audio murottal gagal dibundel. APK tetap dibuat tanpa audio (lihat log langkah audio)."
+      - name: Unduh doa dan dzikir
+        id: dua
+        continue-on-error: true
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: python3 scripts/fetch_dua.py
 
       - name: Pasang file adzan (opsional, dari variabel ADZAN_URL)
         working-directory: ${{ env.PROJECT_DIR }}
@@ -86,6 +88,18 @@ jobs:
         working-directory: ${{ env.PROJECT_DIR }}
         run: gradle :app:assembleDebug --no-daemon
 
+      - name: Verifikasi isi APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          APK=$(ls app/build/outputs/apk/debug/*.apk | head -n 1)
+          unzip -l "$APK" > apk_list.txt
+          MP3=$(grep -c 'assets/murottal/[0-9]*\.mp3' apk_list.txt || true)
+          echo "Audio murottal di APK: $MP3 dari 114"
+          grep -q 'assets/doa.json' apk_list.txt && echo "doa.json: ADA" || echo "doa.json: TIDAK ADA"
+          grep -q 'assets/adzan.mp3' apk_list.txt && echo "adzan.mp3: ADA" || echo "adzan.mp3: TIDAK ADA"
+          grep -c 'assets/quran' apk_list.txt || true
+          if [ "$MP3" -ne 114 ]; then echo "::error::Audio murottal di APK hanya $MP3 dari 114"; exit 1; fi
+
       - name: Ukuran APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: ls -lh app/build/outputs/apk/debug/
@@ -94,4 +108,15 @@ jobs:
         with:
           name: masjidku-debug-apk
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+
+      - name: Pastikan audio dan doa lengkap
+        if: always()
+        run: |
+          if [ "${{ steps.audio.outcome }}" = "failure" ]; then
+            echo "::error::Audio murottal gagal dibundel. APK sudah dibuat tetapi TANPA audio. Lihat log langkah audio."
+            exit 1
+          fi
+          if [ "${{ steps.dua.outcome }}" = "failure" ]; then
+            echo "::warning::Data doa dan dzikir gagal diunduh. Menu Doa akan disembunyikan di APK ini."
+          fi
           
