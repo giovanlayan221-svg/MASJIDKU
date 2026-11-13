@@ -66,6 +66,14 @@ jobs:
         working-directory: ${{ env.PROJECT_DIR }}
         run: python3 scripts/fetch_dua.py
 
+      - name: Unduh adzan berlisensi terbuka (Wikimedia Commons)
+        id: adzan_open
+        continue-on-error: true
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          python3 scripts/fetch_adzan.py
+          cat app/src/main/assets/adzan/license_check.json
+
       - name: Pasang file adzan (opsional, dari variabel ADZAN_URL)
         working-directory: ${{ env.PROJECT_DIR }}
         env:
@@ -96,6 +104,7 @@ jobs:
           MP3=$(grep -c 'assets/murottal/[0-9]*\.mp3' apk_list.txt || true)
           echo "Audio murottal di APK: $MP3 dari 114"
           grep -q 'assets/doa.json' apk_list.txt && echo "doa.json: ADA" || echo "doa.json: TIDAK ADA"
+          grep -q 'assets/adzan/subuh_malmo.mp3' apk_list.txt && echo "adzan Subuh (Malmö): ADA" || echo "::warning::adzan Subuh (Malmö) TIDAK ADA di APK"
           grep -q 'assets/adzan.mp3' apk_list.txt && echo "adzan.mp3: ADA" || echo "adzan.mp3: TIDAK ADA"
           grep -c 'assets/quran' apk_list.txt || true
           if [ "$MP3" -ne 114 ]; then echo "::error::Audio murottal di APK hanya $MP3 dari 114"; exit 1; fi
