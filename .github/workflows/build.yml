@@ -1,9 +1,14 @@
-name: Build APK
+name: Build APK dan unggah ke Release
 
+# Berjalan HANYA saat sebuah Release dipublikasikan (tidak lagi tiap push).
+# Hasilnya (APK) otomatis terlampir di halaman Release itu.
 on:
-  push:
-    branches: [ main ]
+  release:
+    types: [published]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -66,10 +71,12 @@ jobs:
         working-directory: ${{ env.PROJECT_DIR }}
         run: python3 scripts/fetch_dua.py
 
-      - name: Unduh adzan berlisensi terbuka (Wikimedia Commons)
+      - name: Unduh adzan berlisensi terbuka (Commons + rekaman pencipta, lisensi diperiksa)
         id: adzan_open
         continue-on-error: true
         working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           python3 scripts/fetch_adzan.py
           cat app/src/main/assets/adzan/license_check.json
@@ -104,16 +111,37 @@ jobs:
           MP3=$(grep -c 'assets/murottal/[0-9]*\.mp3' apk_list.txt || true)
           echo "Audio murottal di APK: $MP3 dari 114"
           grep -q 'assets/doa.json' apk_list.txt && echo "doa.json: ADA" || echo "doa.json: TIDAK ADA"
-          grep -q 'assets/adzan/subuh_malmo.mp3' apk_list.txt && echo "adzan Subuh (Malmö): ADA" || echo "::warning::adzan Subuh (Malmö) TIDAK ADA di APK"
+          for f in subuh_khalaf subuh_malmo reguler_khalaf_1 reguler_khalaf_2 reguler_azeez; do
+            grep -q "assets/adzan/$f.mp3" apk_list.txt && echo "adzan $f: ADA" || echo "::warning::adzan $f TIDAK ADA di APK"
+          done
+          grep -q 'assets/adzan/reguler_' apk_list.txt || echo "::warning::Zuhur/Asar/Magrib/Isya TANPA file adzan di APK"
           grep -q 'assets/adzan.mp3' apk_list.txt && echo "adzan.mp3: ADA" || echo "adzan.mp3: TIDAK ADA"
           grep -c 'assets/quran' apk_list.txt || true
           if [ "$MP3" -ne 114 ]; then echo "::error::Audio murottal di APK hanya $MP3 dari 114"; exit 1; fi
+          if [ "${{ github.event_name }}" = "release" ]; then
+            grep -q 'assets/adzan/subuh_' apk_list.txt || { echo "::error::Release dibatalkan: adzan Subuh tidak ada di APK"; exit 1; }
+            grep -q 'assets/adzan/reguler_' apk_list.txt || { echo "::error::Release dibatalkan: adzan Zuhur/Asar/Magrib/Isya tidak ada di APK"; exit 1; }
+          fi
 
       - name: Ukuran APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: ls -lh app/build/outputs/apk/debug/
 
+      - name: Lampirkan APK ke Release
+        if: github.event_name == 'release'
+        working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          APK=$(ls app/build/outputs/apk/debug/*.apk | head -n 1)
+          cp "$APK" "masjidku-$TAG.apk"
+          gh release upload "$TAG" "masjidku-$TAG.apk" --clobber --repo "${{ github.repository }}"
+          cp app/src/main/assets/adzan/license_check.json "adzan-license-check-$TAG.json" 2>/dev/null \
+            && gh release upload "$TAG" "adzan-license-check-$TAG.json" --clobber --repo "${{ github.repository }}" || true
+
       - uses: actions/upload-artifact@v4
+        if: github.event_name != 'release'
         with:
           name: masjidku-debug-apk
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
